@@ -38,18 +38,6 @@ dnav() {
     output=$(python $DNAV_DIRECTORY/dnav.py $*)
     retval="$?"
 
-    # A status of 1 indicates that the program would like us
-    # to change to the provided directory
-    if [ $retval -eq 1 ]; then
-        cd $output
-        return 0
-        # less than 0 indicates an error or other status from
-        # the program that does not require us to modify anything
-    elif [ $retval -lt 0 ]; then
-        echo $output
-        return $retval
-    else
-        echo $output
-        return $retval
-    fi
+    eval $output
+    exit $retval
 }

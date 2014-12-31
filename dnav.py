@@ -8,6 +8,12 @@ import argparse
 import os
 import sys
 
+#TODO: Need to escape shell special characters since this is evaluated
+def echo(message):
+    sys.stdout.write("echo " + message)
+
+def echo_error(message):
+    sys.stdout.write("echo " + message + " >2")
 
 def get_symlink_directory():
     """Get the directory where symlinks for aliases are stored"""
@@ -31,10 +37,11 @@ def do_cd(args):
     alias = args.alias
 
     target_directory = get_target_for_alias(alias)
-    if target_directory is None:
-        print("Alias %r is not defined" % (alias, ))
-    sys.stdout.write(target_directory)
-    return 1  # 1 is interpreted specially by the shell script wrapper
+    if target_directory:
+        echo("cd {}".format(target_directory))
+    else:
+        echo_error("Alias %r is not defined" % (alias, ))
+        return -1
 
 
 def do_add(args):
@@ -44,18 +51,18 @@ def do_add(args):
     directory = os.path.abspath(args.directory)
 
     if not os.path.exists(directory):
-        print("Directory %r does not exist" % (directory, ))
+        echo_error("Directory %r does not exist" % (directory, ))
         return -1
 
     if not os.path.isdir(directory):
-        print("%r exists but is not a directory" % (directory, ))
+        echo_error("%r exists but is not a directory" % (directory, ))
         return -1
 
     # If this alias already exists remove it first
     if os.path.exists(alias_path):
         os.unlink(alias_path)
     os.symlink(directory, alias_path)
-    print("New alias created %s -> %s" % (alias, directory))
+    echo("New alias created %s -> %s" % (alias, directory))
     return 0
 
 
@@ -64,12 +71,12 @@ def do_show(args):
     alias = args.alias
 
     target_directory = get_target_for_alias(alias)
-    if target_directory is None:
-        print("No alias with name %r exists" % (alias, ))
+    if target_directory:
+        echo(target_directory)
+        return 0
+    else:
+        echo_error("No alias with name %r exists" % (alias, ))
         return -1
-
-    print(target_directory)
-    return 0
 
 
 def do_rm(args):
@@ -77,24 +84,31 @@ def do_rm(args):
     alias = args.alias
     alias_path = os.path.join(get_symlink_directory(), alias)
 
-    if not os.path.exists(alias_path):
-        print("No alias with name %r exists" % (alias, ))
-        return -1
-    else:
+    if os.path.exists(alias_path):
         target_directory = os.path.abspath(os.readlink(alias_path))
         os.unlink(alias_path)
-        print("Alias deleted: %s -> %s" % (alias, target_directory))
+        echo("Alias deleted: %s -> %s" % (alias, target_directory))
         return 0
+    else:
+        echo_error("No alias with name %r exists" % (alias, ))
+        return -1
 
+
+CLEAR="""
+read -r -p  "Clear all aliases? [y/N] " response
+case $response in
+    [yY][eE][sS]|[yY])
+        {}
+        ;;
+    *)
+        ;;
+esac
+"""
 
 def do_clear(args):
     """Clear command handler"""
-    # TODO: in theory it would be nice to confirm that this is actually what the user
-    # wants.  In practice, the current shell script wrapper makes this difficult as
-    # it buffers all output from this command
-    for alias in os.listdir(get_symlink_directory()):
-        print("Removing alias %r" % (alias, ))
-        os.unlink(os.path.join(get_symlink_directory(), alias))
+    do_remove = '\n'.join('echo Removing alias {} && rm {}'.format(alias, os.path.join(get_symlink_directory(), alias)) for alias in os.listdir(get_symlink_directory()))
+    os.stdout.write(CLEAR.format(do_remove))
     return 0
 
 
@@ -103,9 +117,9 @@ def do_list(args):
     for alias in os.listdir(get_symlink_directory()):
         target = get_target_for_alias(alias)
         if not os.path.exists(target):
-            print("%s -> %s (broken)" % (alias, target))
+            echo("%s -> %s (broken)" % (alias, target))
         else:
-            print("%s -> %s" % (alias, target))
+            echo("%s -> %s" % (alias, target))
     return 0
 
 
@@ -114,7 +128,7 @@ def do_prune(args):
     for alias in os.listdir(get_symlink_directory()):
         target = get_target_for_alias(alias)
         if not os.path.exists(target):
-            print("Removing bad alias %s -> %s" % (alias, target))
+            echo("Removing bad alias %s -> %s" % (alias, target))
             os.unlink(os.path.join(get_symlink_directory(), alias))
     return 0
 
